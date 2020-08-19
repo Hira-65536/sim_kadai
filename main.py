@@ -4,10 +4,11 @@ from pygame.locals import *
 import sys
 import copy
 import time
+import random
 
 MAP_WIDTH = 500
 MAP_HEIGHT = 500
-map_chip = 4
+map_chip = 5
 
 def pygame_init():
     pygame.init()  # Pygameの初期化
@@ -21,17 +22,21 @@ class gui_object:
     screen = pygame.display.set_mode((width, height))
 
 class Map(gui_object):
-    before_map = [[0 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
-    after_map = [[0 for i in range(int(MAP_WIDTH / map_chip))] for j in range(int((MAP_HEIGHT - 100) / map_chip))]
+    before_map = [[1 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
+    after_map = [[1 for i in range(int(MAP_WIDTH / map_chip))] for j in range(int((MAP_HEIGHT - 100) / map_chip))]
     row, col = len(before_map), len(before_map[0])  #row:x cal:y
 
     def draw(self,cell_map):
         for i in range(self.row):
             for j in range(self.col):
                 if cell_map[i][j]==1:
-                    pygame.draw.rect(self.screen,(255,255,0),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                    pygame.draw.rect(self.screen,(47,79,79),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
                 elif cell_map[i][j]==2:
                     pygame.draw.rect(self.screen,(255,0,0),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                elif cell_map[i][j]==3:
+                    pygame.draw.rect(self.screen,(0,0,255),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                elif cell_map[i][j]==4:
+                    pygame.draw.rect(self.screen,(0,255,0),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
 
 class gui_window(gui_object):
     def __init__(self):
@@ -126,7 +131,9 @@ def object_draw(push):
     cur.draw(push)
 
 def around_counter(cells,_x,_y):
-    count = 0
+    count_1 = 0
+    count_2 = 0
+    count_3 = 0
     cell = Map()
     for y in range(-1,2):
         for x in range(-1,2):
@@ -135,20 +142,42 @@ def around_counter(cells,_x,_y):
             x2 = (cell.row+_x+x)%cell.row
             y2 = (cell.col+_y+y)%cell.col
             if cells[x2][y2]==1:
-                count+=1
-    return count
+                count_1+=1
+            if cells[x2][y2]==2:
+                count_2+=1
+            if cells[x2][y2]==3:
+                count_3+=1
+
+    return count_1,count_2,count_3
 
 def step_cells(b,a):
     cell = Map()
+    n = [0,0,0]
     for y in range(cell.col):
         for x in range(cell.row):
             n = around_counter(b,x,y)
-            dead_or_alive = int(b[x][y])
+            cell_checker = 0
             if b[x][y]==1:
-                if n<=1 or n>=4:dead_or_alive=2
+                if n[1]>=1 or n[2]>=1:
+                    if n[1]>=n[2]:
+                        cell_checker=2
+                    elif n[1]<n[2]:
+                        cell_checker=3
+                else:
+                    cell_checker=1
+            elif b[x][y]==2:
+                if n[1]<n[2]:
+                    cell_checker=3
+                else:
+                    cell_checker=2
+            elif b[x][y]==3:
+                if n[1]>=n[2]:
+                    cell_checker=2
+                else:
+                    cell_checker=3
             else:
-                if n==3:dead_or_alive=1
-            a[x][y]=dead_or_alive
+                pass
+            a[x][y]=cell_checker
 
 def main():
     (x,y)=(0,0)
@@ -165,10 +194,10 @@ def main():
     on_map = True
     fps_timer = True
     while (1):
-        screen.fill((50, 205, 50))
+        screen.fill((220, 220, 220))
         text1 = font1.render("X:{:3d} Y:{:3d}".format(x, y), True, (0, 0, 0))
         text2 = font1.render("GEN:"+str(counter), True, (0, 0, 0))
-        text3 = font1.render("TOOL:" + str(push), True, (0, 0, 0))
+        text3 = font1.render("TOOL:" + str(mouse_btn_check), True, (0, 0, 0))
         if flag:
             cell.draw(cell.before_map)
         else:
@@ -203,10 +232,15 @@ def main():
                     on_map = True
                 #x -= int(player.get_width() / 2)
                 #y -= int(player.get_height() / 2)
+            if event.type == MOUSEBUTTONDOWN and event.button == 3:
+                if x>=300 and y>=MAP_HEIGHT-60 and x<=336 and y<MAP_HEIGHT-60+36:
+                    mouse_btn_check +=1
+                    if mouse_btn_check>4:mouse_btn_check=1
+                    push = 1
             if event.type == MOUSEBUTTONDOWN and event.button == 1:
                 push = 10
                 if x>=250 and y>=MAP_HEIGHT-60 and x<=286 and y<MAP_HEIGHT-60+36:
-                    mouse_btn_check = 2
+                    mouse_btn_check = -1
                     push = 5
                 if x>=300 and y>=MAP_HEIGHT-60 and x<=336 and y<MAP_HEIGHT-60+36:
                     mouse_btn_check = 1
@@ -224,7 +258,7 @@ def main():
                     pass
                 if mouse_btn_check == 2:
                     pass
-            if event.type == MOUSEBUTTONUP and event.button == 1:
+            if event.type == MOUSEBUTTONUP:
                 push = 0
                 #mouse_btn_check = 0
 
@@ -240,6 +274,24 @@ def main():
                         cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 0
                     else:
                         cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 0
+            elif mouse_btn_check == 2 and push!=0:
+                if on_map:
+                    if flag:
+                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 2
+                    else:
+                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 2
+            elif mouse_btn_check == 3 and push!=0:
+                if on_map:
+                    if flag:
+                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 3
+                    else:
+                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 3
+            elif mouse_btn_check == 4 and push!=0:
+                if on_map:
+                    if flag:
+                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 4
+                    else:
+                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 4
 
 
             if event.type == QUIT:  # 閉じるボタンが押されたら終了
