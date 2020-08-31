@@ -5,10 +5,14 @@ import sys
 import copy
 import time
 import random
+import heapq
 
 MAP_WIDTH = 500
 MAP_HEIGHT = 500
 map_chip = 5
+start_point = [0,0]
+GOAL_FLAG = False
+GOAL_INIT = True
 
 def pygame_init():
     pygame.init()  # Pygameの初期化
@@ -22,21 +26,32 @@ class gui_object:
     screen = pygame.display.set_mode((width, height))
 
 class Map(gui_object):
-    before_map = [[1 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
-    after_map = [[1 for i in range(int(MAP_WIDTH / map_chip))] for j in range(int((MAP_HEIGHT - 100) / map_chip))]
+    before_map = [[0 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
+    after_map = [[0 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
     row, col = len(before_map), len(before_map[0])  #row:x cal:y
+    init_flag=True
 
     def draw(self,cell_map):
+        global start_point
         for i in range(self.row):
             for j in range(self.col):
-                if cell_map[i][j]==1:
-                    pygame.draw.rect(self.screen,(47,79,79),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
-                elif cell_map[i][j]==2:
-                    pygame.draw.rect(self.screen,(255,0,0),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
-                elif cell_map[i][j]==3:
+                if cell_map[i][j]==1 and self.init_flag:
+                     start_point=i,j
+                     self.init_flag=False
+                elif cell_map[i][j]==1:
+                    pygame.draw.rect(self.screen,(0,255,127),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                elif cell_map[i][j]>=2:
+                    pygame.draw.rect(self.screen,(204,255,255),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                elif cell_map[i][j]==-2:
                     pygame.draw.rect(self.screen,(0,0,255),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
-                elif cell_map[i][j]==4:
+                elif cell_map[i][j]==-3:
                     pygame.draw.rect(self.screen,(0,255,0),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                elif cell_map[i][j]==-1:
+                    pygame.draw.rect(self.screen,(105,105,105),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                else:
+                    pygame.draw.rect(self.screen, (255, 255, 255), Rect(j * map_chip, i * map_chip, map_chip, map_chip),0)
+                if start_point[0]==i and start_point[1]==j:
+                    pygame.draw.rect(self.screen, (255, 0, 0), Rect(j * map_chip, i * map_chip, map_chip, map_chip), 0)
 
 class gui_window(gui_object):
     def __init__(self):
@@ -131,53 +146,102 @@ def object_draw(push):
     cur.draw(push)
 
 def around_counter(cells,_x,_y):
-    count_1 = 0
-    count_2 = 0
-    count_3 = 0
+    cell_count = 0
+    destination = -1
+    global GOAL_INIT
+    cnt=0
+    goal = 0
+    min_num = [0,0,0,0]
     cell = Map()
     for y in range(-1,2):
         for x in range(-1,2):
             if x==0 and y==0:
                 continue
-            x2 = (cell.row+_x+x)%cell.row
-            y2 = (cell.col+_y+y)%cell.col
-            if cells[x2][y2]==1:
-                count_1+=1
-            if cells[x2][y2]==2:
-                count_2+=1
-            if cells[x2][y2]==3:
-                count_3+=1
+            elif x==1 and y==-1:
+                continue
+            elif x==-1 and y==1:
+                continue
+            elif x==1 and y==1:
+                continue
+            elif x==-1 and y==-1:
+                continue
+            x2 = _x+x
+            y2 = _y+y
+            if x2<0:
+                x2=0
+            if y2<0:
+                y2=0
+            if get_error(cells,x2,y2)!=0:
+                if cells[x2][y2]>=1:
+                    cell_count+=1
+                if cells[x2][y2]==-2:
+                    goal+=1
+                min_num[cnt]=cells[x2][y2]
+            cnt+=1
 
-    return count_1,count_2,count_3
+
+    return cell_count,goal,destination
+
+def get_error(cells,x,y):
+    if is_exist(cells,x,y):
+        return cells[x][y]
+    else:
+        return 0
+
+def is_exist(cells,x,y):
+    try:
+        _ = cells[x][y]
+    except IndexError:
+        return False
+    else:
+        return True
 
 def step_cells(b,a):
     cell = Map()
-    n = [0,0,0]
+    n = 0
+    goal=0
+    global GOAL_FLAG
     for y in range(cell.col):
         for x in range(cell.row):
-            n = around_counter(b,x,y)
+            n,goal,_ = around_counter(b,x,y)
             cell_checker = 0
-            if b[x][y]==1:
-                if n[1]>=1 or n[2]>=1:
-                    if n[1]>=n[2]:
-                        cell_checker=2
-                    elif n[1]<n[2]:
-                        cell_checker=3
-                else:
+            if b[x][y]==0:
+                if n>=1:
                     cell_checker=1
-            elif b[x][y]==2:
-                if n[1]<n[2]:
-                    cell_checker=3
-                else:
-                    cell_checker=2
-            elif b[x][y]==3:
-                if n[1]>=n[2]:
-                    cell_checker=2
-                else:
-                    cell_checker=3
-            else:
-                pass
+
+            elif b[x][y]>=1:
+                cell_checker=b[x][y]+1
+                if goal>=1:
+                    GOAL_FLAG=True
+            elif b[x][y] == -1:
+                cell_checker = -1
+            elif b[x][y] == -2:
+                cell_checker = -2
+
             a[x][y]=cell_checker
+
+def Dijkstra(array):
+    cell = Map()
+    goal=0
+    destination=0
+    x=start_point[0]
+    y=start_point[1]
+    while True:
+        _,goal,destination = around_counter(array,x,y)
+        if destination==-1:
+            continue
+        if destination==0:
+            y-=1
+        if destination==1:
+            x-=1
+        if destination==2:
+            x+=1
+        if destination==3:
+            y+=1
+        array[x][y]=-3
+        if goal>=1:
+            break
+
 
 def main():
     (x,y)=(0,0)
@@ -198,6 +262,13 @@ def main():
         text1 = font1.render("X:{:3d} Y:{:3d}".format(x, y), True, (0, 0, 0))
         text2 = font1.render("GEN:"+str(counter), True, (0, 0, 0))
         text3 = font1.render("TOOL:" + str(mouse_btn_check), True, (0, 0, 0))
+        if GOAL_FLAG:
+            timer_start = False
+            if flag:
+                Dijkstra(cell.before_map)
+            else:
+                Dijkstra(cell.after_map)
+
         if flag:
             cell.draw(cell.before_map)
         else:
@@ -251,7 +322,7 @@ def main():
                 if x>=400 and y>=MAP_HEIGHT-60 and x<=436 and y<MAP_HEIGHT-60+36:
                     push = 3
                     timer_start=True
-                if x >= 450 and y >= MAP_HEIGHT - 60 and x <= 486 and y < MAP_HEIGHT - 60 + 36:
+                if x >= 450 and y >= MAP_HEIGHT - 60 and x <= 486 and y < MAP_HEIGHT - 60 + 36 or GOAL_FLAG:
                     push = 4
                     timer_start=False
                 else:
@@ -265,9 +336,9 @@ def main():
             if mouse_btn_check == 1 and push!=0:
                 if on_map:
                     if flag:
-                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 1
+                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = -1
                     else:
-                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 1
+                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = -1
             elif mouse_btn_check == 0 and push!=0:
                 if on_map:
                     if flag:
@@ -277,15 +348,15 @@ def main():
             elif mouse_btn_check == 2 and push!=0:
                 if on_map:
                     if flag:
-                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 2
+                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 1
                     else:
-                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 2
+                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 1
             elif mouse_btn_check == 3 and push!=0:
                 if on_map:
                     if flag:
-                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = 3
+                        cell.before_map[int(map_y / map_chip)][int(x / map_chip)] = -2
                     else:
-                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = 3
+                        cell.after_map[int(map_y / map_chip)][int(x / map_chip)] = -2
             elif mouse_btn_check == 4 and push!=0:
                 if on_map:
                     if flag:
