@@ -2,18 +2,17 @@
 import pygame
 from pygame.locals import *
 import sys
-import copy
 import time
-import random
-import heapq
 
 MAP_WIDTH = 500
 MAP_HEIGHT = 500
-map_chip = 5
+map_chip = 10
 start_point = [0,0]
+goal_point = [0,0]
 GOAL_FLAG = False
 GOAL_INIT = True
-
+END_FLAG=False
+COST_CNT=0
 def pygame_init():
     pygame.init()  # Pygameの初期化
     pygame.display.set_caption("simulation")
@@ -26,23 +25,25 @@ class gui_object:
     screen = pygame.display.set_mode((width, height))
 
 class Map(gui_object):
-    before_map = [[0 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
-    after_map = [[0 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
+    before_map = [[-1 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
+    after_map = [[-1 for i in range(int(MAP_WIDTH/map_chip))] for j in range(int((MAP_HEIGHT-100)/map_chip))]
     row, col = len(before_map), len(before_map[0])  #row:x cal:y
     init_flag=True
 
     def draw(self,cell_map):
         global start_point
+        global goal_point
         for i in range(self.row):
             for j in range(self.col):
-                if cell_map[i][j]==1 and self.init_flag:
-                     start_point=i,j
-                     self.init_flag=False
+                if self.init_flag and cell_map[i][j]==1:
+                    start_point=i,j
                 elif cell_map[i][j]==1:
-                    pygame.draw.rect(self.screen,(0,255,127),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                    if not GOAL_FLAG:pygame.draw.rect(self.screen,(0,255,127),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
+                    else:pygame.draw.rect(self.screen,(204,255,255),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
                 elif cell_map[i][j]>=2:
                     pygame.draw.rect(self.screen,(204,255,255),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
                 elif cell_map[i][j]==-2:
+                    goal_point = i, j
                     pygame.draw.rect(self.screen,(0,0,255),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
                 elif cell_map[i][j]==-3:
                     pygame.draw.rect(self.screen,(0,255,0),Rect(j*map_chip,i*map_chip,map_chip,map_chip),0)
@@ -151,6 +152,7 @@ def around_counter(cells,_x,_y):
     global GOAL_INIT
     cnt=0
     goal = 0
+    start = 0
     min_num = [0,0,0,0]
     cell = Map()
     for y in range(-1,2):
@@ -176,11 +178,15 @@ def around_counter(cells,_x,_y):
                     cell_count+=1
                 if cells[x2][y2]==-2:
                     goal+=1
-                min_num[cnt]=cells[x2][y2]
+                if start_point[0]==x2 and start_point[1]==y2:
+                    start+=1
+                min_num[cnt] = cells[x2][y2]
+            if min_num[cnt]<=0:
+                min_num[cnt] = -5
+
             cnt+=1
 
-
-    return cell_count,goal,destination
+    return cell_count,goal,min_num,start
 
 def get_error(cells,x,y):
     if is_exist(cells,x,y):
@@ -203,12 +209,11 @@ def step_cells(b,a):
     global GOAL_FLAG
     for y in range(cell.col):
         for x in range(cell.row):
-            n,goal,_ = around_counter(b,x,y)
+            n,goal,_,__ = around_counter(b,x,y)
             cell_checker = 0
             if b[x][y]==0:
                 if n>=1:
                     cell_checker=1
-
             elif b[x][y]>=1:
                 cell_checker=b[x][y]+1
                 if goal>=1:
@@ -217,36 +222,38 @@ def step_cells(b,a):
                 cell_checker = -1
             elif b[x][y] == -2:
                 cell_checker = -2
-
             a[x][y]=cell_checker
 
-def Dijkstra(array):
+def Dijkstra(b, a, x, y):
     cell = Map()
-    goal=0
-    destination=0
-    x=start_point[0]
-    y=start_point[1]
-    while True:
-        _,goal,destination = around_counter(array,x,y)
-        if destination==-1:
-            continue
-        if destination==0:
-            y-=1
-        if destination==1:
-            x-=1
-        if destination==2:
-            x+=1
-        if destination==3:
-            y+=1
-        array[x][y]=-3
-        if goal>=1:
-            break
-
+    global COST_CNT
+    destination = [0,0,0,0]
+    cnt=0
+    global END_FLAG
+    _, __, destination,start = around_counter(b, x, y)
+    tmp=COST_CNT
+    COST_CNT=destination.index(max(destination))
+    if tmp!=destination.index(max(destination)):
+        cnt=1
+    if 0==destination.index(max(destination)):
+        y-=1
+    if 1==destination.index(max(destination)):
+        x-=1
+    if 2==destination.index(max(destination)):
+        x+=1
+    if 3==destination.index(max(destination)):
+        y+=1
+    b[x][y]=-3
+    if start>=1:
+        END_FLAG=True
+    return x, y,cnt
 
 def main():
     (x,y)=(0,0)
     map_y=0
     counter=0
+    cost=0
+    corner_cost = 0
     timer_start = False
     global map_chip
     mouse_btn_check = 0
@@ -257,22 +264,29 @@ def main():
     flag = True
     on_map = True
     fps_timer = True
+    tool='NONE'
+
     while (1):
         screen.fill((220, 220, 220))
         text1 = font1.render("X:{:3d} Y:{:3d}".format(x, y), True, (0, 0, 0))
-        text2 = font1.render("GEN:"+str(counter), True, (0, 0, 0))
-        text3 = font1.render("TOOL:" + str(mouse_btn_check), True, (0, 0, 0))
-        if GOAL_FLAG:
+        text2 = font1.render("TOOL:"+tool, True, (0, 0, 0))
+        text3 = font1.render("COST:" + str(cost)+"/CORN:"+str(corner_cost), True, (0, 0, 0))
+
+        if GOAL_FLAG and not END_FLAG:
+            tmp=0
             timer_start = False
             if flag:
-                Dijkstra(cell.before_map)
+                x_goal, y_goal,tmp = Dijkstra(cell.before_map, cell.after_map, x_goal, y_goal)
             else:
-                Dijkstra(cell.after_map)
+                x_goal, y_goal,tmp = Dijkstra(cell.after_map, cell.before_map, x_goal, y_goal)
+            cost+=1
+            corner_cost+=tmp
 
         if flag:
             cell.draw(cell.before_map)
         else:
             cell.draw(cell.after_map)
+
         object_draw(push)
         screen.blit(text1, (20, MAP_HEIGHT - 80))
         screen.blit(text2, (20, MAP_HEIGHT - 60))
@@ -283,13 +297,16 @@ def main():
             fps_timer = False
             time_stack=pygame.time.get_ticks()
         if timer_start:
-            if 500<=pygame.time.get_ticks() - time_stack:
+            if 100<=pygame.time.get_ticks() - time_stack:
                 counter += 1
                 fps_timer=True
-                if flag:
-                    step_cells(cell.before_map, cell.after_map)
-                else:
-                    step_cells(cell.after_map, cell.before_map)
+
+                if not GOAL_FLAG and not END_FLAG:
+                    if flag:
+                        step_cells(cell.before_map, cell.after_map)
+                    else:
+                        step_cells(cell.after_map, cell.before_map)
+                    x_goal,y_goal=goal_point
                 flag = not flag
         # イベント処理
         for event in pygame.event.get():
@@ -306,21 +323,29 @@ def main():
             if event.type == MOUSEBUTTONDOWN and event.button == 3:
                 if x>=300 and y>=MAP_HEIGHT-60 and x<=336 and y<MAP_HEIGHT-60+36:
                     mouse_btn_check +=1
+                    if mouse_btn_check==1:tool='WALL'
+                    elif mouse_btn_check==2:tool='START'
+                    elif mouse_btn_check==3:tool='GOAL'
+                    elif mouse_btn_check==4:tool='OTHER'
                     if mouse_btn_check>4:mouse_btn_check=1
                     push = 1
             if event.type == MOUSEBUTTONDOWN and event.button == 1:
                 push = 10
                 if x>=250 and y>=MAP_HEIGHT-60 and x<=286 and y<MAP_HEIGHT-60+36:
                     mouse_btn_check = -1
+                    tool = 'CURSOR'
                     push = 5
                 if x>=300 and y>=MAP_HEIGHT-60 and x<=336 and y<MAP_HEIGHT-60+36:
                     mouse_btn_check = 1
+                    tool = 'WALL'
                     push = 1
                 if x>=350 and y>=MAP_HEIGHT-60 and x<=386 and y<MAP_HEIGHT-60+36:
                     mouse_btn_check = 0
+                    tool = 'ERASER'
                     push = 2
                 if x>=400 and y>=MAP_HEIGHT-60 and x<=436 and y<MAP_HEIGHT-60+36:
                     push = 3
+                    cell.init_flag=False
                     timer_start=True
                 if x >= 450 and y >= MAP_HEIGHT - 60 and x <= 486 and y < MAP_HEIGHT - 60 + 36 or GOAL_FLAG:
                     push = 4
